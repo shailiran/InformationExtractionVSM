@@ -12,21 +12,10 @@ TF_IDF = "tf-idf"
 inverted_index = {}
 
 
-def main():
-    args = sys.argv
-    if args[1] == 'create_index':
-        build_vocabulary(args[2])
-    elif args[1] == 'query':
-        ask_question(args[2], 'ontology.nt')
-
-
-if __name__ == "__main__":
-    main()
-
-
 def build_vocabulary(path):
     for file in os.listdir(path):
         root = etree.parse(path + "\\" + file)
+        parse_file(root)
 
 
 def parse_file(root):
@@ -63,8 +52,16 @@ def parse_file(root):
                 inverted_index[token] = {record_num: {FREQ: 1}}
 
 
+def main():
+    args = sys.argv
+    if args[1] == 'create_index':
+        build_vocabulary(args[2])
+    elif args[1] == 'query':
+        ask_question(args[2], 'ontology.nt')
 
 
+if __name__ == "__main__":
+    main()
 
 
 
