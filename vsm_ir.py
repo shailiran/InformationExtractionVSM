@@ -5,9 +5,14 @@ import os
 from lxml import etree
 import nltk
 from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+from nltk.stem import PorterStemmer
+
 
 nltk.download('stopwords')
+nltk.download('punkt')
 
+porter_stemmer = PorterStemmer()
 TF = "tf"
 TF_IDF = "tf-idf"
 inverted_index = {}
@@ -27,11 +32,10 @@ def build_vocabulary(path):
 
 def calc_tf_idf(files_number):
     for word in inverted_index:
-        print(word)
-        n = len(inverted_index[word][TF])
+        n = len(inverted_index[word])
         idf = math.log(files_number / n, 2)
-        for doc in inverted_index[word][TF]:
-            inverted_index[word][TF_IDF] = {doc: inverted_index[word][TF][doc] * idf}
+        for doc in inverted_index[word]:
+            inverted_index[word][doc][TF_IDF] = inverted_index[word][doc][TF] * idf
 
 
 def parse_file(root, files_number):
@@ -40,14 +44,19 @@ def parse_file(root, files_number):
         record_num = (record.xpath("./RECORDNUM/text()"))[0].lstrip("0").rstrip()
         text = ""
         if len(record.xpath(".//TITLE/text()")) > 0:
-            text += record.xpath(".//TITLE/text()")[0] + " "
+            text += record.xpath(".//TITLE/text()")[0].replace("\n", " ").replace(".", "") + " "
         if len(record.xpath(".//EXTRACT/text()")) > 0:
-            text += record.xpath(".//EXTRACT/text()")[0] + " "
+            text += record.xpath(".//EXTRACT/text()")[0].replace("\n", " ").replace(".", "") + " "
         if len(record.xpath(".//ABSTRACT/text()")) > 0:
-            text += record.xpath(".//ABSTRACT/text()")[0] + " "
+            text += record.xpath(".//ABSTRACT/text()")[0].replace("\n", " ").replace(".", "") + " "
 
-        tokens = [word.lower() for word in text.split(" ") if word != ""]
+        tokens = word_tokenize(text)
+        # tokens_wo_stopwords = [porter_stemmer.stem(word.lower()) for word in tokens if
+        #                      not word.lower() in stopwords.words('english')]
 
+
+
+        # tokens = [word.lower() for word in text.split(" ") if word != ""]
         tokens_wo_stopwords = set()
         for token in tokens:
             if token not in stopwords.words('english'):
@@ -57,8 +66,8 @@ def parse_file(root, files_number):
         count_dict = {}
         for token in tokens_wo_stopwords:
             count_dict[token] = tokens.count(token)
+        # print(count_dict)
         max_val = max(count_dict.values())
-
         for token in tokens_wo_stopwords:
             tf[token] = count_dict[token] / max_val
 
