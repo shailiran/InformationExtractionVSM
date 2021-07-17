@@ -57,13 +57,15 @@ def parse_file(root, files_number):
 
 
         # tokens = [word.lower() for word in text.split(" ") if word != ""]
-        tokens_wo_stopwords = set()
+        tokens_wo_stopwords = []
         for token in tokens:
             if token not in stopwords.words('english'):
-                tokens_wo_stopwords.add(token)
+                tokens_wo_stopwords.append(token)
 
         tf = {}
         count_dict = {}
+        # print(tokens_wo_stopwords)
+        # print("##############################################################")
         for token in tokens_wo_stopwords:
             count_dict[token] = tokens.count(token)
         # print(count_dict)
@@ -80,13 +82,45 @@ def parse_file(root, files_number):
     return files_number
 
 
+def build_question_index(question):
+    question_index = {}
+    tokens = word_tokenize(question)
+    tokens_wo_stopwords = []
+    for token in tokens:
+        if token not in stopwords.words('english'):
+            tokens_wo_stopwords.append(token)
+    tf = {}
+    count_dict = {}
+    for token in tokens_wo_stopwords:
+        count_dict[token] = tokens.count(token)
+    max_val = max(count_dict.values())
+    for token in tokens_wo_stopwords:
+        tf[token] = count_dict[token] / max_val
+
+    for token in tokens_wo_stopwords:
+        if token in question_index:
+            if record_num not in inverted_index[token]:
+                question_index[token][record_num] = {TF: tf[token]}
+        else:
+            question_index[token] = {record_num: {TF: tf[token]}}
+
+
+def get_relevant_docs(question):
+    question_index = build_question_index(question)
+
+
+
 def main():
     args = sys.argv
     if args[1] == 'create_index':
         build_vocabulary(args[2])
-    # elif args[1] == 'query':
-    #     ask_question(args[2], 'ontology.nt')
-
+    elif args[1] == 'query':
+        index_path = args[2]
+        question = args[3]
+        with open(index_path) as f:
+            data = json.load(f)
+        inverted_index.update(data)
+        get_relevant_docs(question)
 
 if __name__ == "__main__":
     main()
