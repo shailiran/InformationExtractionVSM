@@ -12,11 +12,11 @@ from num2words import num2words
 
 
 porter_stemmer = PorterStemmer()
-TF = "tf"
 TF_IDF = "tf-idf"
 COUNT = "count"
+TOTAL_FILES = "total_files"
 inverted_index = {}
-
+THRESHOLD = 0.1
 
 def convert_lower_case(data):
     return np.char.lower(data)
@@ -67,7 +67,7 @@ def convert_numbers(data):
     new_text = np.char.replace(new_text, "-", " ")
     return new_text
 
-
+# Credit: https://github.com/williamscott701/Information-Retrieval/blob/master/2.%20TF-IDF%20Ranking%20-%20Cosine%20Similarity%2C%20Matching%20Score/TF-IDF.ipynb
 def preprocess(data):
     data = convert_lower_case(data)
     data = remove_punctuation(data)  # remove comma seperately
@@ -118,6 +118,7 @@ def calc_tf_idf():
 
     # calc
     num_of_files = len(max_freq)
+    inverted_index[TOTAL_FILES] = num_of_files
     for word in inverted_index:
         for recored_num in inverted_index[word]:
             tf = inverted_index[word][recored_num][COUNT] / max_freq[recored_num]
@@ -139,9 +140,72 @@ def build_vocabulary(path):
 
 
 
+def get_weighted_question(question):
+    data = preprocess(question)
+    question_vec = {}
+    max_freq = 0  # denominator in tf formula
+    for word in data.split(" "):
+        if word in question_vec:
+            question_vec[word] += 1
+        else:
+            question_vec[word] = 1
+        if max_freq < question_vec[word]:
+            max_freq = question_vec[word]
+
+    weighted_question = {}
+    for word in question_vec:
+        tf = question_vec[word] / max_freq
+        if word in inverted_index:
+            idf = math.log(inverted_index[TOTAL_FILES] + 1 / len(inverted_index[word]), 2)
+        else:
+            idf = math.log(inverted_index[TOTAL_FILES] + 1 / len(inverted_index[word]), 2)
+        weighted_question[word] = tf * idf
+    return weighted_question, data
+
+
 def get_relevant_docs(question):
+    weighted_question, data = get_weighted_question(question)
+
+    # Get all relevant docs by question
+    relevant_docs = set()
+    for word in data.split(" "):
+        relevant_docs.add(inverted_index[word].keys())
+
+    # calc tf-idf for all relevant docs
+    tfidf_docs = {}
+    for word in inverted_index:
+        for record_num in inverted_index[word]:
+            if record_num in relevant_docs:
+                if record_num in tfidf_docs:
+                    tfidf_docs[record_num] += inverted_index[word][record_num]**2
+                else:
+                    tfidf_docs[record_num] = inverted_index[word][record_num]**2
+
+    question_vector_weight = 0
+    doc_to_score = {}
+    for word in weighted_question:
+        question_vector_weight += weighted_question[word]**2
+        if word in inverted_index:
+            for record_num in inverted_index[word]:
+                if record_num in doc_to_score:
+                    doc_to_score[record_num] += tfidf_docs[record_num] * weighted_question[word]
+                else:
+                    doc_to_score[record_num] = tfidf_docs[record_num] * weighted_question[word]
+
+    # Normalize
+    for record_num in doc_to_score:
+        doc_to_score[record_num] = doc_to_score[record_num] / math.sqrt(question_vector_weight * tfidf_docs[record_num])
 
 
+    sorted_docs = [doc.lstrip("0") for doc in sorted(doc_to_score, key=lambda k: doc_to_score[k], reverse=True) if
+                   doc_to_score[doc] > THRESHOLD]
+
+    #
+    # write_file = open('ranked_query_docs.txt', 'w')
+    # for doc_num in sorted_docs:
+    #     write_file.write(doc_num + '\n')
+    # write_file.close()
+    return sorted_docs
 
 def main():
     args = sys.argv
