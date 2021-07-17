@@ -125,7 +125,6 @@ def calc_tf_idf():
             inverted_index[word][recored_num][TF_IDF] = tf * idf
 
 
-
 def build_vocabulary(path):
     for file in os.listdir(path):
         root = etree.parse(path + "\\" + file)
@@ -139,6 +138,11 @@ def build_vocabulary(path):
     outfile.close()
 
 
+
+def get_relevant_docs(question):
+
+
+
 def main():
     args = sys.argv
     if args[1] == 'create_index':
@@ -148,8 +152,9 @@ def main():
         question = args[3]
         with open(index_path) as f:
             data = json.load(f)
-        # inverted_index.update(data)
-        # get_relevant_docs(question)
+        inverted_index.update(data)
+        get_relevant_docs(question)
+
 
 if __name__ == "__main__":
     main()
