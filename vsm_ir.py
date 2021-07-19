@@ -8,14 +8,12 @@ from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 from nltk.stem import PorterStemmer
 import numpy as np
-from num2words import num2words
 
 
 porter_stemmer = PorterStemmer()
 TF_IDF = "tf-idf"
 COUNT = "count"
 TOTAL_FILES = "total_files"
-INFO = "INFO"
 inverted_index = {}
 THRESHOLD = 0.08
 
@@ -36,7 +34,6 @@ def remove_stop_words(data):
 
 def remove_punctuation(data):
     symbols = "!\"#$%&()*+-./:;<=>?@[\]^_`{|}~\n"
-    # symbols = '-.;:!?/\,#@$&)(\'"'
     for i in range(len(symbols)):
         data = np.char.replace(data, symbols[i], ' ')
         data = np.char.replace(data, "  ", " ")
@@ -106,18 +103,13 @@ def calc_tf_idf():
     # calc
     num_of_files = len(max_freq)
     inverted_index[TOTAL_FILES] = num_of_files
-    inverted_index[INFO] = {}
     for word in inverted_index:
-        if word == TOTAL_FILES or word == INFO:
+        if word == TOTAL_FILES:
             continue
         for record_num in inverted_index[word]:
             tf = inverted_index[word][record_num][COUNT] / max_freq[record_num]
             idf = math.log(num_of_files / len(inverted_index[word]), 2)
             inverted_index[word][record_num][TF_IDF] = tf * idf
-            if record_num in inverted_index[INFO]:
-                inverted_index[INFO][record_num] += (tf * idf) ** 2
-            else:
-                inverted_index[INFO][record_num] = (tf * idf) ** 2
 
 
 def build_vocabulary(path):
@@ -148,41 +140,56 @@ def get_weighted_question(question):
 
     weighted_question = {}
     for word in question_vec:
-        # if word not in inverted_index: # TODO - check
-        #     weighted_question[word] = 0
-        #     continue
         tf = question_vec[word] / max_freq
         if word in inverted_index:
             idf = math.log((inverted_index[TOTAL_FILES] + 1) / len(inverted_index[word]), 2)
         else:
             idf = math.log((inverted_index[TOTAL_FILES] + 1), 2)
         weighted_question[word] = tf * idf
-    return weighted_question
+    return weighted_question, data
 
 
 def get_relevant_docs(question):
-    weighted_question = get_weighted_question(question)
+    weighted_question, data = get_weighted_question(question)
+    data = data.strip()
+
+    # Get all relevant docs by question
+    relevant_docs = set()
+    for word in data.split(" "):
+        if word not in inverted_index:
+            continue
+        relevant_docs.update(list(inverted_index[word].keys()))
+
+    # calc tf-idf for all relevant docs
+    tfidf_docs = {}
+    for word in inverted_index:
+        if word == TOTAL_FILES:
+            continue
+        for record_num in inverted_index[word]:
+            if record_num in relevant_docs:
+                if record_num in tfidf_docs:
+                    tfidf_docs[record_num] += inverted_index[word][record_num][TF_IDF] ** 2
+                else:
+                    tfidf_docs[record_num] = inverted_index[word][record_num][TF_IDF] ** 2
 
     question_vector_weight = 0
-    doc_to_score = {}
+    doc_scores = {}
     for word in weighted_question:
         question_vector_weight += weighted_question[word]**2
         if word in inverted_index:
             for record_num in inverted_index[word]:
-                if record_num in doc_to_score:
-                    doc_to_score[record_num] += inverted_index[word][record_num][TF_IDF] * weighted_question[word]
+                if record_num in doc_scores:
+                    doc_scores[record_num] += inverted_index[word][record_num][TF_IDF] * weighted_question[word]
                 else:
-                    doc_to_score[record_num] = inverted_index[word][record_num][TF_IDF]  * weighted_question[word]
+                    doc_scores[record_num] = inverted_index[word][record_num][TF_IDF] * weighted_question[word]
 
     # Normalize
-    for record_num in doc_to_score:
-        doc_to_score[record_num] = doc_to_score[record_num] / math.sqrt(question_vector_weight * inverted_index[INFO][record_num])
+    for record_num in doc_scores:
+        doc_scores[record_num] = doc_scores[record_num] / math.sqrt(question_vector_weight * tfidf_docs[record_num])
 
-    sorted_docs = [doc.lstrip("0") for doc in sorted(doc_to_score, key=lambda k: doc_to_score[k], reverse=True) if
-                   doc_to_score[doc] > THRESHOLD]
+    sorted_docs = [doc.lstrip("0") for doc in sorted(doc_scores, key=lambda k: doc_scores[k], reverse=True) if
+                   doc_scores[doc] > THRESHOLD]
 
-    # sorted_docs = [doc.lstrip("0") for doc in sorted(doc_to_score, key=lambda k: doc_to_score[k], reverse=True)]
-    # sorted_docs = sorted_docs[:(len(sorted_docs)//13)]
     write_file = open('ranked_query_docs.txt', 'w')
     for doc_num in sorted_docs:
         write_file.write(doc_num + '\n')
@@ -205,6 +212,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    # calculate_acc()
-# query C:\Users\ASUS\PycharmProjects\InformationExtractionSVM/vsm_inverted_index.json “What factors are responsible for the appearance of mucoid strains of Pseudomonas aeruginosa in CF patients?”
-# create_index C:\Users\ASUS\PycharmProjects\InformationExtractionSVM\cfc-xml_corrected
