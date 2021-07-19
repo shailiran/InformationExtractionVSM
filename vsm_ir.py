@@ -18,6 +18,7 @@ TOTAL_FILES = "total_files"
 inverted_index = {}
 THRESHOLD = 0.8
 
+
 def convert_lower_case(data):
     return np.char.lower(data)
 
@@ -34,6 +35,7 @@ def remove_stop_words(data):
 
 def remove_punctuation(data):
     symbols = "!\"#$%&()*+-./:;<=>?@[\]^_`{|}~\n"
+    # symbols = '-.;:!?/\,#@$&)(\'"'
     for i in range(len(symbols)):
         data = np.char.replace(data, symbols[i], ' ')
         data = np.char.replace(data, "  ", " ")
@@ -55,34 +57,13 @@ def stemming(data):
     return new_text
 
 
-def convert_numbers(data):
-    tokens = word_tokenize(str(data))
-    new_text = ""
-    for w in tokens:
-        try:
-            w = num2words(int(w))
-        except:
-            a = 0
-        new_text = new_text + " " + w
-    new_text = np.char.replace(new_text, "-", " ")
-    return new_text
-
-
 # Credit: https://github.com/williamscott701/Information-Retrieval/blob/master/2.%20TF-IDF%20Ranking%20-%20Cosine%20Similarity%2C%20Matching%20Score/TF-IDF.ipynb
 def preprocess(data):
-    data = convert_lower_case(data)
     data = remove_punctuation(data)  # remove comma seperately
-    data = remove_apostrophe(data)
+    data = convert_lower_case(data)
     data = remove_stop_words(data)
-    data = convert_numbers(data)
     data = stemming(data)
     data = data.strip()
-
-    # data = remove_punctuation(data)
-    # data = convert_numbers(data)
-    # data = stemming(data)  # needed again as we need to stem the words
-    # data = remove_punctuation(data)  # needed again as num2word is giving few hypens and commas fourty-one
-    # data = remove_stop_words(data)  # needed again as num2word is giving stop words 101 - one hundred and one
     return data
 
 
