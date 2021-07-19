@@ -8,7 +8,6 @@ from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 from nltk.stem import PorterStemmer
 import numpy as np
-from num2words import num2words
 
 
 porter_stemmer = PorterStemmer()
@@ -16,7 +15,7 @@ TF_IDF = "tf-idf"
 COUNT = "count"
 TOTAL_FILES = "total_files"
 inverted_index = {}
-THRESHOLD = 0.8
+THRESHOLD = 0.08
 
 
 def convert_lower_case(data):
@@ -35,7 +34,6 @@ def remove_stop_words(data):
 
 def remove_punctuation(data):
     symbols = "!\"#$%&()*+-./:;<=>?@[\]^_`{|}~\n"
-    # symbols = '-.;:!?/\,#@$&)(\'"'
     for i in range(len(symbols)):
         data = np.char.replace(data, symbols[i], ' ')
         data = np.char.replace(data, "  ", " ")
@@ -142,9 +140,6 @@ def get_weighted_question(question):
 
     weighted_question = {}
     for word in question_vec:
-        if word not in inverted_index: # TODO - check
-            weighted_question[word] = 0
-            continue
         tf = question_vec[word] / max_freq
         if word in inverted_index:
             idf = math.log((inverted_index[TOTAL_FILES] + 1) / len(inverted_index[word]), 2)
@@ -157,10 +152,11 @@ def get_weighted_question(question):
 def get_relevant_docs(question):
     weighted_question, data = get_weighted_question(question)
     data = data.strip()
+
     # Get all relevant docs by question
     relevant_docs = set()
     for word in data.split(" "):
-        if word not in inverted_index:  # TODO - check
+        if word not in inverted_index:
             continue
         relevant_docs.update(list(inverted_index[word].keys()))
 
@@ -172,101 +168,33 @@ def get_relevant_docs(question):
         for record_num in inverted_index[word]:
             if record_num in relevant_docs:
                 if record_num in tfidf_docs:
-                    tfidf_docs[record_num] += inverted_index[word][record_num][TF_IDF]**2
+                    tfidf_docs[record_num] += inverted_index[word][record_num][TF_IDF] ** 2
                 else:
-                    tfidf_docs[record_num] = inverted_index[word][record_num][TF_IDF]**2
+                    tfidf_docs[record_num] = inverted_index[word][record_num][TF_IDF] ** 2
+
     question_vector_weight = 0
-    doc_to_score = {}
+    doc_scores = {}
     for word in weighted_question:
         question_vector_weight += weighted_question[word]**2
         if word in inverted_index:
             for record_num in inverted_index[word]:
-                if record_num in doc_to_score:
-                    doc_to_score[record_num] += tfidf_docs[record_num] * weighted_question[word]
+                if record_num in doc_scores:
+                    doc_scores[record_num] += inverted_index[word][record_num][TF_IDF] * weighted_question[word]
                 else:
-                    doc_to_score[record_num] = tfidf_docs[record_num] * weighted_question[word]
+                    doc_scores[record_num] = inverted_index[word][record_num][TF_IDF] * weighted_question[word]
 
     # Normalize
-    for record_num in doc_to_score:
-        doc_to_score[record_num] = doc_to_score[record_num] / math.sqrt(question_vector_weight * tfidf_docs[record_num])
+    for record_num in doc_scores:
+        doc_scores[record_num] = doc_scores[record_num] / math.sqrt(question_vector_weight * tfidf_docs[record_num])
 
-    sorted_docs = [doc.lstrip("0") for doc in sorted(doc_to_score, key=lambda k: doc_to_score[k], reverse=True) if
-                   doc_to_score[doc] > THRESHOLD][:75]
+    sorted_docs = [doc.lstrip("0") for doc in sorted(doc_scores, key=lambda k: doc_scores[k], reverse=True) if
+                   doc_scores[doc] > THRESHOLD]
 
     write_file = open('ranked_query_docs.txt', 'w')
     for doc_num in sorted_docs:
         write_file.write(doc_num + '\n')
     write_file.close()
     return sorted_docs
-
-
-def calc_precision(returned_docs, relevant_docs):
-    return len(returned_docs.intersection(relevant_docs)) / len(returned_docs)
-
-
-def calc_recall(docs_returned, relevant_docs):
-    return len(docs_returned.intersection(relevant_docs)) / len(relevant_docs)
-
-
-def calc_NDCG(docs_returned, items_to_scores):
-    items_to_gain = {}
-    for item, score in items_to_scores.items():
-        gain = sum(int(rating) for rating in score) / len(score)
-        items_to_gain[item] = gain
-
-    sorted_items = sorted(items_to_gain, key=lambda k: items_to_gain[k], reverse=True)
-    idcg = items_to_gain[sorted_items[0]]
-    for i in range(1, len(sorted_items)):
-        idcg += items_to_gain[sorted_items[i]] / math.log2(i + 1)
-
-    if len(docs_returned) == 0:
-        return 0
-
-    dcg = items_to_gain.get(docs_returned[0], 0)
-    for i in range(1, len(docs_returned)):
-        dcg += items_to_gain.get(docs_returned[i], 0) / math.log2(i + 1)
-
-    return dcg / idcg
-
-
-def calc_acc_for_all_queries(query_path):
-    count = 0
-    total_precision = 0
-    total_recall = 0
-    total_f1 = 0
-    total_ndcg = 0
-    root = etree.parse(query_path)
-    for query in root.xpath(".//QUERY"):
-        count += 1
-        query_text = ''.join(query.xpath(".//QueryText/text()"))
-        items = query.xpath(".//Item/text()")
-        scores = query.xpath(".//Item/@score")
-        items_to_scores = dict(zip(items, scores))
-        relevant_docs = set([item.strip() for item in items])
-        docs_returned = get_relevant_docs(query_text)
-        docs_returned_set = set(docs_returned)
-        total_ndcg += calc_NDCG(docs_returned, items_to_scores)
-        precision = calc_precision(docs_returned_set, relevant_docs)
-        recall = calc_recall(docs_returned_set, relevant_docs)
-        if recall == 0 or precision == 0:
-            total_f1 += 0
-        else:
-            total_f1 += 2 / ((1 / recall) + (1 / precision))
-        total_recall += recall
-        total_precision += precision
-
-    return total_precision / count, total_recall / count, total_f1 / count, total_ndcg / count
-
-
-def calculate_acc(inverted_index_path="vsm_inverted_index.json", query_path="not_xml_files\cfquery.xml"):
-    with open(inverted_index_path) as f:
-        data = json.load(f)
-    inverted_index.update(data)
-    precision, recall, f1, ndcg = calc_acc_for_all_queries(query_path)
-    print("Precision: {:0.3f}".format(precision))
-    print("Recall: {:0.3f}".format(recall))
-    print("F Score: {:0.3f}".format(f1))
-    print("NDCG: {:0.3f}".format(ndcg))
 
 
 def main():
@@ -284,6 +212,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    # calculate_acc()
-# query C:\Users\ASUS\PycharmProjects\InformationExtractionSVM/vsm_inverted_index.json “What factors are responsible for the appearance of mucoid strains of Pseudomonas aeruginosa in CF patients?”
-# create_index C:\Users\ASUS\PycharmProjects\InformationExtractionSVM\cfc-xml_corrected
